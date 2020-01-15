@@ -2,15 +2,13 @@ package main
 
 import (
 	"bytes"
+	"github.com/stretchr/testify/assert"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"octoberswimmer/heroku-cloudwatch-drain/logparser"
 	"testing"
 	"time"
-
-	"github.com/kiskolabs/heroku-cloudwatch-drain/logparser"
-
-	"github.com/stretchr/testify/assert"
 )
 
 var l = new(LastMessageLogger)

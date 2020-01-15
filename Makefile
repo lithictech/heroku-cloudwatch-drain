@@ -10,11 +10,8 @@ fmt:
 test:
 	go test -race ./...
 
-test-watch:
-	ginkgo watch ./...
-
 build:
 	go build
 
 server:
-	go run main.go
+	go run main.go -bind=:$(PORT) -user=$(USER) -pass=$(PASS)
