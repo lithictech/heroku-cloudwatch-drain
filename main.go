@@ -4,22 +4,18 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
+	"github.com/jcxplorer/cwlogger"
+	"gopkg.in/tylerb/graceful.v1"
 	"io"
 	"log"
 	"net/http"
+	"octoberswimmer/heroku-cloudwatch-drain/logparser"
 	"os"
 	"regexp"
 	"sync"
 	"time"
-
-	"gopkg.in/tylerb/graceful.v1"
-
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
-	"github.com/honeybadger-io/honeybadger-go"
-	"github.com/jcxplorer/cwlogger"
-	"github.com/kiskolabs/heroku-cloudwatch-drain/logparser"
-	"github.com/newrelic/go-agent"
 )
 
 // App is a Heroku HTTPS log drain. It receives log batches as POST requests,
@@ -29,7 +25,6 @@ type App struct {
 	stripAnsiCodes bool
 	user, pass     string
 	parse          logparser.ParseFunc
-	newrelic       newrelic.Application
 
 	loggers map[string]logger
 	mu      sync.Mutex // protects loggers
@@ -44,6 +39,7 @@ func main() {
 	var bind, user, pass string
 	var retention int
 	var stripAnsiCodes bool
+	var err error
 
 	flag.StringVar(&bind, "bind", ":8080", "address to bind to")
 	flag.IntVar(&retention, "retention", 0, "log retention in days for new log groups")
@@ -52,21 +48,6 @@ func main() {
 	flag.BoolVar(&stripAnsiCodes, "strip-ansi-codes", false, "strip ANSI codes from log messages")
 	flag.Parse()
 
-	nrAppName := os.Getenv("NEW_RELIC_APP_NAME")
-	if nrAppName == "" {
-		nrAppName = "heroku-cloudwatch-drain"
-	}
-
-	nrLicense := os.Getenv("NEW_RELIC_LICENSE_KEY")
-	nrConfig := newrelic.NewConfig(nrAppName, nrLicense)
-	nrConfig.Enabled = (nrLicense != "")
-
-	nrApp, err := newrelic.NewApplication(nrConfig)
-	if err != nil {
-		log.Println(err)
-		os.Exit(1)
-	}
-
 	app := &App{
 		retention:      retention,
 		user:           user,
@@ -74,24 +55,10 @@ func main() {
 		stripAnsiCodes: stripAnsiCodes,
 		parse:          logparser.Parse,
 		loggers:        make(map[string]logger),
-		newrelic:       nrApp,
 	}
-
-	if honeybadger.Config.APIKey == "" {
-		honeybadger.Configure(honeybadger.Configuration{Backend: honeybadger.NewNullBackend()})
-	}
-
-	honeybadger.BeforeNotify(
-		func(notice *honeybadger.Notice) error {
-			if notice.ErrorClass == "errors.errorString" {
-				notice.Fingerprint = notice.ErrorMessage
-			}
-			return nil
-		},
-	)
 
 	mux := http.NewServeMux()
-	mux.Handle(newrelic.WrapHandle(nrApp, "/", honeybadger.Handler(app)))
+	mux.Handle("/", app)
 	err = graceful.RunWithErr(bind, 5*time.Second, mux)
 	if err != nil {
 		log.Println(err)
@@ -103,10 +70,6 @@ func main() {
 
 func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	appName := r.URL.Path[1:]
-
-	// honeybadger.SetContext(honeybadger.Context{
-	// 	"AppName": appName,
-	// })
 
 	if r.Method == http.MethodGet {
 		if appName == "" {
@@ -137,13 +100,6 @@ func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	txn, _ := w.(newrelic.Transaction)
-	if txn != nil {
-		if err := txn.AddAttribute("AppName", appName); nil != err {
-			log.Printf("failed to add New Relic attribute for app %s: %s\n", appName, err)
-		}
-	}
-
 	l, err := app.logger(appName)
 	if err != nil {
 		log.Printf("failed to create logger for app %s: %s\n", appName, err)
@@ -151,9 +107,8 @@ func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = app.processMessages(r.Body, l, txn); err != nil {
+	if err = app.processMessages(r.Body, l); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		honeybadger.Notify(err)
 		log.Println(err)
 		return
 	}
@@ -185,19 +140,13 @@ func (app *App) logger(appName string) (l logger, err error) {
 			LogGroupName: appName,
 			Retention:    app.retention,
 			Client:       cloudwatchlogs.New(session.New()),
-			ErrorReporter: func(err error) {
-				honeybadger.Notify(err)
-			},
 		})
 		app.loggers[appName] = l
 	}
 	return l, err
 }
 
-func (app *App) processMessages(r io.Reader, l logger, txn newrelic.Transaction) error {
-	if txn != nil {
-		defer newrelic.StartSegment(txn, "processMessages").End()
-	}
+func (app *App) processMessages(r io.Reader, l logger) error {
 	buf := bufio.NewReader(r)
 	eof := false
 	for {
@@ -206,7 +155,6 @@ func (app *App) processMessages(r io.Reader, l logger, txn newrelic.Transaction)
 			if err == io.EOF {
 				eof = true
 			} else {
-				honeybadger.Notify(err)
 				return fmt.Errorf("failed to scan request body: %s", err)
 			}
 		}
@@ -215,7 +163,6 @@ func (app *App) processMessages(r io.Reader, l logger, txn newrelic.Transaction)
 		}
 		entry, err := app.parse(b)
 		if err != nil {
-			honeybadger.Notify(err)
 			return fmt.Errorf("unable to parse message: %s, error: %s", string(b), err)
 		}
 		m := entry.Message

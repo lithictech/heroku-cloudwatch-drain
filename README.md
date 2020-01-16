@@ -2,23 +2,17 @@
 
 A Heroku HTTPS log drain that stores logs in CloudWatch Logs.
 
-[![Build Status](https://travis-ci.org/kiskolabs/heroku-cloudwatch-drain.svg?branch=master)](https://travis-ci.org/kiskolabs/heroku-cloudwatch-drain)
-
 ## Getting started
 
 ### Heroku
 
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy)
 
-### Locally
+### Local
 
-Build and install:
-
-    $ go install
-
-Run:
-
-    $ heroku-cloudwatch-drain
+```bash
+$ make server
+```
 
 ## Configuration
 
@@ -31,16 +25,6 @@ environment variables and other ways to configure the AWS region, credentials,
 etc., see the [SDK
 Configuration](http://docs.aws.amazon.com/sdk-for-go/v1/developer-guide/configuring-sdk.html)
 page.
-
-## Exception reporting
-
-Set the `HONEYBADGER_API_KEY` environment variable to report panics and errors to Honeybadger.
-
-If you've deployed heroku-cloudwatch-drain to Heroku, see [Honeybadger's Heroku specific instructions](http://docs.honeybadger.io/guides/heroku.html) for more detailed information.
-
-## New Relic Integration
-
-Set the `NEW_RELIC_LICENSE_KEY` environment variable to enable the New Relic integration. Optionally, you can set the `NEW_RELIC_APP_NAME` to customize the app name on New Relic.
 
 ## Sending logs
 
@@ -77,12 +61,3 @@ The IAM policy containing the minimum required permissions to run this is:
   ]
 }
 ```
-
-## Contributing
-
-The [govendor](https://github.com/kardianos/govendor) tool is used for managing
-the `vendor` directory.
-
-Run tests:
-
-    $ govendor test +local

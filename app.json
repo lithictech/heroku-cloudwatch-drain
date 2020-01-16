@@ -8,8 +8,8 @@
     "cloudwatch",
     "logplex"
   ],
-  "website": "https://github.com/kiskolabs/heroku-cloudwatch-drain",
-  "repository": "https://github.com/kiskolabs/heroku-cloudwatch-drain",
+  "website": "https://github.com/octoberswimmer/heroku-cloudwatch-drain",
+  "repository": "https://github.com/octoberswimmer/heroku-cloudwatch-drain",
   "success_url": "/",
   "env": {
     "USER": {
@@ -34,8 +34,7 @@
       "description": "The AWS region.",
       "value": "us-east-1",
       "required": true
-    },
-    "GO_SETUP_GOPATH_IN_IMAGE": "true"
+    }
   },
   "image": "heroku/go",
   "buildpacks": [
